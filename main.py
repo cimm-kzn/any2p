@@ -36,6 +36,14 @@ def main():
     else:
         task = tasktype['o']
 
+    task['basis'] = '3z'
+    task['set'] = ''
+
+    if len(sys.argv) > 3:
+        task['basis'] = sys.argv[3]
+        if len(sys.argv) == 5:
+            task['set'] = '\n set=' + sys.argv[4]
+
     if not os.path.exists(sys.argv[1]):
         sys.exit('нихт файл' % sys.argv[1])
 
@@ -46,22 +54,34 @@ def main():
                   Pm=61, Sm=62, Eu=63, Gd=64, Tb=65, Dy=66, Ho=67, Er=68, Tm=69, Yb=70, Lu=71, Hf=72, Ta=73, W=74,
                   Re=75, Os=76, Ir=77, Pt=78, Au=79, Hg=80, Tl=81, Pb=82, Bi=83, Po=84, At=85, Rn=86, Fr=87, Ra=88,
                   Ac=89, Th=90, Pa=91, U=92, Np=93, Pu=94, Am=95, Cm=96, Bk=97)
+
+    lines = open(sys.argv[1]).readlines()
+    for line in lines:
+        data = re.search('\s*-?[0-9]+\s+-?[0-9]+', line)
+        if data:
+            print(data.group())
+            data = data.group().split(' ')
+            task['charge'] = data[0].strip()
+            task['mult'] = data[1].strip()
+            break
+
     print "$system memory=2000 disk=10 path=/tmp $end\n" \
           "$control\n" \
           " task=%(task)s\n" \
           " theory=DFT\n four=1\n" \
-          " basis=/home/stsouko/.priroda/basis/basis4.in\n" \
+          " basis=/home/stsouko/.priroda/basis/%(basis)s\n" \
           "$end\n"\
           "$dft functional=PBE $end\n" \
           "$optimize\n" \
           " steps=%(steps)s\n" \
           "%(scan)s$end\n" \
           "$molecule\n" \
-          " charge=0\n" \
-          " mult=1\n" \
-          " cartesian\n" \
-          " set=L2" % task
-    for line in open(sys.argv[1]):
+          " charge=%(charge)s\n" \
+          " mult=%(mult)s\n" \
+          " cartesian" \
+          "%(set)s" % task
+
+    for line in lines:
         cord = re.search('[A-Z][a-z]?(\s+-?[0-9]+\.[0-9]+){3}', line)
         if cord:
             print "%3s" % str(mendel[cord.group()[:2].strip()]) + "%50s" % cord.group()[2:].strip()
