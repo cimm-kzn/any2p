@@ -57,9 +57,8 @@ def main():
 
     lines = open(sys.argv[1]).readlines()
     for line in lines:
-        data = re.search('\s*-?[0-9]+\s+-?[0-9]+', line)
+        data = re.search('\s*-?[0-9]+\s+[0-9]+', line)
         if data:
-            #print(data.group())
             data = data.group().split(' ')
             task['charge'] = data[0].strip()
             task['mult'] = data[1].strip()
