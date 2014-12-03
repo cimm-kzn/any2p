@@ -19,7 +19,7 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 #
-#usage: script input file o/s
+#usage: script input_file o|s basis set
 __author__ = 'stsouko'
 import sys
 import os
@@ -28,7 +28,7 @@ import re
 
 def main():
     tasktype = {'o': dict(task="optimize", steps="200", scan=""),
-                's': dict(task="scan", steps="20", scan=" fix=1,a,b,0,0\n value=2.3, 2.0\n points=16\n")}
+                's': dict(task="scan", steps="50", scan=" fix=1,a,b,0,0\n value=2.3, 2.0\n points=16\n")}
     if len(sys.argv) < 2:
         sys.exit('а файл угадать мне?')
     if len(sys.argv) == 3:
@@ -36,7 +36,7 @@ def main():
     else:
         task = tasktype['o']
 
-    task['basis'] = '3z'
+    task['basis'] = '/home/stsouko/.priroda/basis/3z'
     task['set'] = ''
 
     if len(sys.argv) > 3:
@@ -57,9 +57,8 @@ def main():
 
     lines = open(sys.argv[1]).readlines()
     for line in lines:
-        data = re.search('\s*-?[0-9]+\s+-?[0-9]+', line)
+        data = re.search('\s*-?[0-9]+\s+[0-9]+', line)
         if data:
-            print(data.group())
             data = data.group().split(' ')
             task['charge'] = data[0].strip()
             task['mult'] = data[1].strip()
@@ -69,7 +68,7 @@ def main():
           "$control\n" \
           " task=%(task)s\n" \
           " theory=DFT\n four=1\n" \
-          " basis=/home/stsouko/.priroda/basis/%(basis)s\n" \
+          " basis=%(basis)s\n" \
           "$end\n"\
           "$dft functional=PBE $end\n" \
           "$optimize\n" \
