@@ -1,0 +1,272 @@
+#!/usr/bin/perl -ws
+use strict;
+use warnings;
+use Data::Dumper;
+our ($h, $ijk, $b, $axis); # Опции
+
+if ($h) {
+  print <<HELP;
+Переориентирует xyz-файл(ы), зануляя 6 x,y,z-координат у выбранных атомов.
+Usage: $0 [-ijk=i,j,k [-b] [-axis=xy|rxy|xz|rxz|yz]] file.xyz [> reoriented_file.xyz]
+Зависимости: Perl
+
+После опции -ijk нужно перечислить три номера атомов, координаты которых
+следует занулить. Зануляются следующие координаты:
+      x     y     z
+ i:  0.00  0.00  0.00    Атом i в центре координат
+ j:        0.00  0.00    Атом j на оси x
+ k:              0.00    Атом k в плоскости xy
+Если опция -ijk отсутствует, то предполагается -ijk=1,2,3.
+
+Опция -b означает, что тройка i,j,k будет передвинута в начало.
+опция -axis меняет плоскость ijk. rx* дополнительно вращает вдоль оси x*
+HELP
+  exit(0);
+}
+
+
+my ($i,$j,$k) = (1,2,3);
+if ($ijk) {
+  $ijk=~/(\d+)[\s[:punct:]]+(\d+)[\s[:punct:]]+(\d+)/ ?
+  ($i,$j,$k) = ($1,$2,$3) :
+  die "Номера после -ijk должны быть целыми числами!\n";
+  
+  die "Номера после -ijk не должны быть нулевыми!\n" if $i==0 or $j==0 or $k==0;
+  die "Номера после -ijk не должны быть одинаковыми!\n" if $i==$j or $j==$k or $k==$i;
+}
+
+foreach my $mol (read_molden()) {
+  if ($i>$#$mol or $j>$#$mol or $k>$#$mol) {
+    warn "Номер после -ijk больше числа атомов!\n";
+  } else {
+    re_orientation($mol,$i,$j,$k);
+    if ($b && $ijk) {
+      my @ijk;
+      my $en = shift @$mol;
+      push(@ijk, splice @$mol, $_-1, 1, '') for ($i,$j,$k);
+      @$mol = grep {$_} @$mol;
+      unshift @$mol, $en, @ijk;
+    }
+    write_molden($mol);
+  }
+}
+
+# Читает xyz. Параметры - имена xyz-файлов. Если параметров нет, то <>.
+# Возвращает массив найденных молекул.
+sub read_molden {
+  local @ARGV = @_ ? @_ : @ARGV;
+  my $num = qr/-?\d+(?:\.\d+)?/;
+  my @mols;
+  my $line;
+  LOOP:
+  while ($line || defined($line = <>)) {
+    #print $line;
+    if ($line =~/^\s*(\d+)\s*$/) {
+      my @mol;
+      my $N = $1;
+      last LOOP if eof();
+      next LOOP if eof(ARGV);
+      $line = <>;
+      ($mol[0]) = $line =~ /($num)/o;
+      for (my $i=1; $i<=$N; $i++) {
+        last LOOP if eof();
+        next LOOP if eof(ARGV);
+        $line = <>;
+        #print $line;
+        if ($line =~ /^\s*([A-Z]{1,2})\s+($num)\s+($num)\s+($num)\s*(.*)/io) {
+          $mol[$i] = [$1,$2,$3,$4,$5];
+        } else {
+          next LOOP;
+        }
+      }
+      push @mols, \@mol;
+      last LOOP if eof();
+    } else {
+      undef $line;
+    }
+  }
+  return @mols;
+}
+
+# Печатает xyz. Параметры -- список молекул, в конце м.б. имя файла.
+# Если последний элемент списка - имя файла (не ссылка на массив),
+# то печать в этот файл, иначе - на stdout
+sub write_molden {
+  my $fh = \*STDOUT;
+  if (ref($_[-1]) ne 'ARRAY') {
+    my $file = pop @_;
+    open $fh, '>', $file or die "Can't write to $file: $!\n";
+  }
+  
+  foreach my $mol (@_) {
+    my $N = $#{$mol};
+    print $fh " $N\n";
+    print $fh " Energy $mol->[0]" if $mol->[0];
+    print $fh "\n";
+    for (my $i=1; $i<=$N; $i++) {
+      my ($atom,$x,$y,$z,$ppm) = @{$mol->[$i]};
+      printf $fh " %-2s %12.8f %12.8f %12.8f", $atom, $x, $y, $z;
+      printf $fh uc($atom) eq 'H' ? " %10.3f" : " %9.2f"  , $ppm if $ppm;
+      print $fh "\n";
+    }
+  }
+  #close $fh;
+}
+
+# my ($x,$y,$z) = get_xyz($mol);
+# Возвращает список ссылок на массивы 1..$N (@x,@y,@z) молекулы
+# (нулевые элементы пустые)
+sub get_xyz {
+  my $mol = shift;
+  my (@x,@y,@z);
+  my $N = $#{$mol};
+  for (my $i=1; $i<=$N; $i++) {
+    $x[$i] = $mol->[$i][1];
+    $y[$i] = $mol->[$i][2];
+    $z[$i] = $mol->[$i][3];
+  }
+  return (\@x,\@y,\@z);
+}
+
+# put_xyz($mol,\@x,\@y,\@z);
+# Помещает координаты из массивов 1..$N (@x,@y,@z) в молекулу
+sub put_xyz {
+  my ($mol,$x,$y,$z) = @_;
+  my $N = $#{$mol};
+  return undef if $#{$x} != $N || $#{$y} != $N || $#{$z} != $N;
+  for (my $i=1; $i<=$N; $i++) {
+    $mol->[$i][1] = $x->[$i];
+    $mol->[$i][2] = $y->[$i];
+    $mol->[$i][3] = $z->[$i];
+  }
+  1
+}
+
+# centre_to_atom($mol,$i)
+# Помещает центр координат молекулы на атом $i
+sub centre_to_atom {
+  my ($mol,$i) = @_;
+  my $N = $#{$mol};
+  return undef if $i > $N;
+  my ($xi,$yi,$zi) = ($mol->[$i][1],$mol->[$i][2],$mol->[$i][3]);
+  for (my $n=1; $n<=$N; $n++) {
+    $mol->[$n][1] -= $xi;
+    $mol->[$n][2] -= $yi;
+    $mol->[$n][3] -= $zi; 
+  }
+  1
+}
+
+# ($A,$B,$C) = plane_normal($mol,$i,$j,$k);
+# Возвращает вектор нормаль к плоскости, проходящей через атомы $i, $j, $k.
+# Если атомов больше трех, плоскость через них проводится по наименьшим квадратам.
+sub plane_normal {
+  my ($mol,@nums) = @_;
+  my ($x,$y,$z) = get_xyz($mol);
+  my @x = @$x; my @y = @$y; my @z = @$z;
+  my ($A,$B,$C);
+  return undef if @nums<3;
+  if (@nums == 3) {
+    my ($i,$j,$k) = @nums;
+    $A = ($y[$j]-$y[$i])*($z[$k]-$z[$i])-($z[$j]-$z[$i])*($y[$k]-$y[$i]);
+    $B = ($z[$j]-$z[$i])*($x[$k]-$x[$i])-($x[$j]-$x[$i])*($z[$k]-$z[$i]);
+    $C = ($x[$j]-$x[$i])*($y[$k]-$y[$i])-($y[$j]-$y[$i])*($x[$k]-$x[$i]);
+    #print "@nums  $A $B $C\n";
+  } else {
+    my ($X,$Y,$Z,$XX,$YY,$ZZ,$XY,$YZ,$XZ);
+    foreach (@nums) {
+      $X  += $x[$_];        $Y  += $y[$_];        $Z  += $z[$_];
+      $XX += $x[$_]*$x[$_]; $YY += $y[$_]*$y[$_]; $ZZ += $z[$_]*$z[$_];
+      $XY += $x[$_]*$y[$_]; $YZ += $y[$_]*$z[$_]; $XZ += $z[$_]*$x[$_];
+    }
+    # A*XX + B*XY + C*XZ = -X   XX XY XZ | -X    -X XY XZ   XX -X XZ   XX XY -X
+    # A*XY + B*YY + C*YZ = -Y   XY YY YZ | -Y    -Y YY YZ   XY -Y YZ   XY YY -Y
+    # A*XZ + B*YZ + C*ZZ = -Z   XZ YZ ZZ | -Z    -Z YZ ZZ   XZ -Z ZZ   XZ YZ -Z
+    $A = $X*($YZ*$YZ-$YY*$ZZ) + $Y*($XY*$ZZ-$YZ*$XZ) + $Z*($YY*$XZ-$XY*$YZ);
+    $B = $X*($XY*$ZZ-$XZ*$YZ) + $Y*($XZ*$XZ-$XX*$ZZ) + $Z*($XX*$YZ-$XY*$XZ);
+    $C = $X*($YY*$XZ-$YZ*$XY) + $Y*($YZ*$XX-$XY*$XZ) + $Z*($XY*$XY-$YY*$XX);
+  }
+  my $normal = sqrt($A**2 + $B**2 +$C**2);
+  $A /= $normal; $B /= $normal; $C /= $normal;
+  #print "@nums  $A $B $C\n";
+  return ($A,$B,$C);
+}
+
+# re_orientation($mol,$i,$j,$k);
+# Переориентирует молекулу так чтобы у атомов $i,$j,$k были координаты
+# $i:  0.00  0.00  0.00
+# $j:  f.ff  0.00  0.00
+# $k:  f.ff  f.ff  0.00
+sub re_orientation {
+  my ($mol,$i,$j,$k) = @_;
+  centre_to_atom($mol,$i);
+  #&write_molden;
+  my ($x,$y,$z) = get_xyz($mol);
+
+  my @x = @$x; my @y = @$y; my @z = @$z;
+   
+  my $xj = sqrt($x[$j]**2 + $y[$j]**2 + $z[$j]**2);
+  my $xk = ($x[$k]*$x[$j] + $y[$k]*$y[$j] + $z[$k]*$z[$j]) / $xj;
+  my $yk = sqrt($x[$k]**2 + $y[$k]**2 + $z[$k]**2 - $xk**2);
+  my ($A1,$B1,$C1) = plane_normal($mol,$i,$j,$k);
+  
+  for (my $n=1; $n<=$#{$mol}; $n++) {
+    if ($n != $i && $n != $j && $n != $k) {
+      my $xn = ($x[$n]*$x[$j] + $y[$n]*$y[$j] + $z[$n]*$z[$j])/$xj;
+      
+      my $yn = ($x[$n]*$x[$k] + $y[$n]*$y[$k] + $z[$n]*$z[$k] - $xn*$xk) / $yk;
+      my $zn = sqrt($x[$n]**2 + $y[$n]**2 + $z[$n]**2 - $xn**2 - $yn**2);
+
+      my ($A2,$B2,$C2) = plane_normal($mol,$j,$k,$n);
+      my $Vec = ($B1*$C2-$C1*$B2)*($x[$k]-$x[$j])+
+                ($C1*$A2-$A1*$C2)*($y[$k]-$y[$j])+
+                ($A1*$B2-$B1*$A2)*($z[$k]-$z[$j]);
+      $zn = -$zn if $Vec < 0;
+      #print "$Vec\n";
+      ($x[$n],$y[$n],$z[$n]) =  ($xn,$yn,$zn);
+    }
+  }
+  ($x[$j],$y[$j],$z[$j],$x[$k],$y[$k],$z[$k]) =  ($xj,0,0,$xk,$yk,0);
+#====================================================================
+#костыль для смены плоскостей ориентацииы
+  if ($axis) {
+    if ($axis=~'xz') {
+      for (my $n=1; $n<=$#{$mol}; $n++) {
+        $z[$n] = -$z[$n];
+      }
+      #foreach my $t (@z) { $t = -$t; }
+      put_xyz($mol,\@x,\@z,\@y);
+    }
+    if ($axis=~'rxz') {
+      for (my $n=1; $n<=$#{$mol}; $n++) {
+        $z[$n] = -$z[$n];
+        $y[$n] = -$y[$n];
+      }
+      #foreach my $t (@y) { $t = -$t; }
+      #foreach my $t (@z) { $t = -$t; }
+      put_xyz($mol,\@x,\@z,\@y);
+    }
+    if ($axis=~'rxy') {
+      for (my $n=1; $n<=$#{$mol}; $n++) {
+        $z[$n] = -$z[$n];
+        $y[$n] = -$y[$n];
+      }
+      put_xyz($mol,\@x,\@y,\@z);
+    }
+    if ($axis=~'xy') {
+      put_xyz($mol,\@x,\@y,\@z);
+    }
+    if ($axis=~'yz') {
+      for (my $n=1; $n<=$#{$mol}; $n++) {
+        $z[$n] = -$z[$n];
+      }
+      put_xyz($mol,\@z,\@y,\@x);
+    }
+  }
+  else {
+    put_xyz($mol,\@x,\@y,\@z);
+  }
+  
+  #&write_molden;
+}
+
