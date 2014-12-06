@@ -2,7 +2,7 @@
 use strict;
 use warnings;
 use Data::Dumper;
-our ($h, $ijk, $b, $axis); # Опции
+our ($h, $ijk, $b, $ax, $s); # Опции
 
 if ($h) {
   print <<HELP;
@@ -19,7 +19,10 @@ Usage: $0 [-ijk=i,j,k [-b] [-axis=xy|rxy|xz|rxz|yz]] file.xyz [> reoriented_file
 Если опция -ijk отсутствует, то предполагается -ijk=1,2,3.
 
 Опция -b означает, что тройка i,j,k будет передвинута в начало.
-опция -axis меняет плоскость ijk. rx* дополнительно вращает вдоль оси x*
+
+опция -ax меняет плоскость ijk  (xy по умолчанию, xz и yz)
+rx[yz] дополнительно разворачивает молекулу вдоль оси x
+опция -s сдвигает молекулу вдоль оси от 0. y для r?xy и yz. x для r?xz
 HELP
   exit(0);
 }
@@ -33,6 +36,14 @@ if ($ijk) {
   
   die "Номера после -ijk не должны быть нулевыми!\n" if $i==0 or $j==0 or $k==0;
   die "Номера после -ijk не должны быть одинаковыми!\n" if $i==$j or $j==$k or $k==$i;
+}
+
+my $shift = 0;
+if ($s) {
+  $shift = $s;
+  $s=~/(-?\d*.?\d+)/ ?
+  $shift = $1 :
+  die "сдвиг -s должен быть числом!\n";
 }
 
 foreach my $mol (read_molden()) {
@@ -228,42 +239,49 @@ sub re_orientation {
   }
   ($x[$j],$y[$j],$z[$j],$x[$k],$y[$k],$z[$k]) =  ($xj,0,0,$xk,$yk,0);
 #====================================================================
-#костыль для смены плоскостей ориентацииы
-  if ($axis) {
-    if ($axis=~'xz') {
+#костыль для смены плоскостей ориентации
+  if ($ax) {
+    if ($ax eq 'xz') {
       for (my $n=1; $n<=$#{$mol}; $n++) {
         $z[$n] = -$z[$n];
+        $x[$n] += $shift;
       }
       #foreach my $t (@z) { $t = -$t; }
       put_xyz($mol,\@x,\@z,\@y);
     }
-    if ($axis=~'rxz') {
+    if ($ax eq 'rxz') {
       for (my $n=1; $n<=$#{$mol}; $n++) {
-        $z[$n] = -$z[$n];
+        #$z[$n] = -$z[$n];
         $y[$n] = -$y[$n];
+        $x[$n] += $shift;
       }
-      #foreach my $t (@y) { $t = -$t; }
-      #foreach my $t (@z) { $t = -$t; }
       put_xyz($mol,\@x,\@z,\@y);
     }
-    if ($axis=~'rxy') {
+    if ($ax eq 'rxy') {
       for (my $n=1; $n<=$#{$mol}; $n++) {
         $z[$n] = -$z[$n];
-        $y[$n] = -$y[$n];
+        $y[$n] = - ($y[$n] + $shift);
       }
       put_xyz($mol,\@x,\@y,\@z);
     }
-    if ($axis=~'xy') {
+    if ($ax eq 'xy') {
+      for (my $n=1; $n<=$#{$mol}; $n++) {
+        $y[$n] += $shift;
+      }
       put_xyz($mol,\@x,\@y,\@z);
     }
-    if ($axis=~'yz') {
+    if ($ax eq 'yz') {
       for (my $n=1; $n<=$#{$mol}; $n++) {
         $z[$n] = -$z[$n];
+        $y[$n] += $shift;
       }
       put_xyz($mol,\@z,\@y,\@x);
     }
   }
   else {
+    for (my $n=1; $n<=$#{$mol}; $n++) {
+      $y[$n] += $shift;
+    }
     put_xyz($mol,\@x,\@y,\@z);
   }
   
