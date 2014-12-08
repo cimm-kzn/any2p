@@ -19,7 +19,8 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 #
-#usage: script input_file o|s basis set
+#usage: script input_file 1,2[,3,4[,...]] basis set
+#1,2,3,4 1st atom of mol 1 with 2nd atom of mol2 3rd of mol 1 with 4th of mol 2. etc
 __author__ = 'stsouko'
 import sys
 import os
