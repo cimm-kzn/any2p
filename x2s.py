@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 #
 #
-#  Copyright 2013 stsouko <stsouko@live.ru>
+#  Copyright 2014 stsouko <stsouko@live.ru>
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -27,22 +27,23 @@ import re
 
 
 def main():
-    tasktype = {'o': dict(task="optimize", steps="200", scan=""),
-                's': dict(task="scan", steps="50", scan=" fix=1,a,b,0,0\n value=2.3, 2.0\n points=16\n")}
+    task = dict(task="scan", steps="50", basis='/home/stsouko/.priroda/basis/3z', set='')
+
     if len(sys.argv) < 2:
         sys.exit('а файл угадать мне?')
     if len(sys.argv) == 3:
-        task = tasktype[sys.argv[2][0]]
+        pares = [int(x) for x in sys.argv[2].split(',')]
+        if len(pares) > 1:
+            pares = [pares[::2], pares[1::2]]
+        else:
+            pares = [[1], [1]]
     else:
-        task = tasktype['o']
-
-    task['basis'] = '/home/stsouko/.priroda/basis/3z'
-    task['set'] = ''
+        pares = [[1], [1]]
 
     if len(sys.argv) > 3:
         task['basis'] = sys.argv[3]
         if len(sys.argv) == 5:
-            task['set'] = '\n set=' + sys.argv[4]
+            task['set'] = '\n set=%s' % sys.argv[4]
 
     if not os.path.exists(sys.argv[1]):
         sys.exit('нихт файл' % sys.argv[1])
@@ -56,14 +57,34 @@ def main():
                   Ac=89, Th=90, Pa=91, U=92, Np=93, Pu=94, Am=95, Cm=96, Bk=97)
 
     lines = open(sys.argv[1]).readlines()
-    for line in lines:
-        data = re.search('\s*-?[0-9]+\s+[0-9]+', line)
-        if data:
-            data = data.group().split(' ')
-            task['charge'] = data[0].strip()
-            task['mult'] = data[1].strip()
-            break
+    molblock = -1
+    atoms = []
+    step = -1
+    fix = [{}, {}]
+    for i, line in enumerate(lines):
+        if line.strip().isdigit() and i > molblock:
+            molblock = i + 1
+            step += 1
+            if atoms:
+                shift = len(atoms)
+        elif i > molblock:
+            cord = re.search('[A-Z][a-z]?(\s+-?[0-9]+\.[0-9]+){3}', line)
+            if cord:
+                atoms.append("%3s%50s" % (str(mendel[cord.group()[:2].strip()]), cord.group()[2:].strip()))
 
+                if i - molblock in pares[step]:
+                    fix[step][i - molblock] = [float(x.strip()) for x in cord.group()[2:].strip().split('  ')]
+
+    fixtext = [' fix=']
+    valtext = []
+    for i, j in zip(*pares):
+        dist = 0.
+        for k, l in zip(fix[0][i], fix[1][j]):
+            dist += (k-l)**2
+        fixtext.append('1,%d,%d,0,0' % (i, j + shift))
+        valtext.append('%.3f' % dist**.5)
+
+    task['scan'] = "%s\n%s\n points=20\n" % (' '.join(fixtext), ' value=' + ','.join(valtext) + ' ' + ','.join(['@'] * len(pares[0])))
     print "$system memory=2000 disk=10 path=/tmp $end\n" \
           "$control\n" \
           " task=%(task)s\n" \
@@ -75,15 +96,12 @@ def main():
           " steps=%(steps)s\n" \
           "%(scan)s$end\n" \
           "$molecule\n" \
-          " charge=%(charge)s\n" \
-          " mult=%(mult)s\n" \
+          " charge=0\n" \
+          " mult=1\n" \
           " cartesian" \
           "%(set)s" % task
 
-    for line in lines:
-        cord = re.search('[A-Z][a-z]?(\s+-?[0-9]+\.[0-9]+){3}', line)
-        if cord:
-            print "%3s" % str(mendel[cord.group()[:2].strip()]) + "%50s" % cord.group()[2:].strip()
+    print '\n'.join(atoms)
     print "$end"
     return 0
 
